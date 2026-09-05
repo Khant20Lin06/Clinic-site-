@@ -779,6 +779,20 @@
             font-family: inherit;
         }
 
+        .field input[type="date"] {
+            color-scheme: dark;
+        }
+
+        .field input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            opacity: .7;
+            cursor: pointer;
+        }
+
+        .field input[type="date"]::-webkit-calendar-picker-indicator:hover {
+            opacity: 1;
+        }
+
         .field input:focus,
         .field select:focus,
         .field textarea:focus {
@@ -823,6 +837,64 @@
                 grid-template-columns: 1fr;
                 padding: 28px;
             }
+        }
+
+        .token-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(38px, 1fr));
+            gap: 7px;
+            margin-bottom: 8px;
+        }
+
+        .token-cell {
+            aspect-ratio: 1;
+            border-radius: 8px;
+            border: 1px solid var(--stroke);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            color: var(--muted);
+            background: transparent;
+            transition: all .15s ease;
+        }
+
+        .token-cell:hover {
+            border-color: var(--accent-b);
+            color: var(--text);
+        }
+
+        .token-cell.taken {
+            background: rgba(255, 255, 255, .03);
+            color: rgba(255, 255, 255, .2);
+            border-color: var(--stroke);
+            cursor: not-allowed;
+        }
+
+        .token-cell.selected {
+            background: linear-gradient(90deg, var(--accent-a), var(--accent-b));
+            color: #0a1620;
+            border-color: transparent;
+        }
+
+        .lookup-box {
+            margin-top: 22px;
+            padding-top: 20px;
+            border-top: 1px solid var(--stroke);
+        }
+
+        .lookup-result-row {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            padding: 6px 0;
+            color: var(--muted);
+        }
+
+        .lookup-result-row span:last-child {
+            color: var(--text);
         }
 
         /* ---------- PHARMACY ---------- */
@@ -1524,6 +1596,13 @@
                                     id="bookAgainBtn">နောက်တစ်ကြိမ် Book မည်</button></div>
                         </div>
                         <form id="bookingForm">
+                            <label
+                                style="display:block;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">Token
+                                နံပါတ် ရွေးပါ</label>
+                            <div class="token-grid" id="siteTokenGrid"></div>
+                            <p style="font-size:12.5px;color:var(--muted);margin-bottom:20px;">ရွေးထားသည့် Token —
+                                <strong id="selectedTokenLabel" style="color:var(--text);">မရွေးရသေးပါ</strong>
+                            </p>
                             <div class="field-row2">
                                 <div class="field"><label>အမည်</label><input type="text" id="bk-name" required></div>
                                 <div class="field"><label>ဖုန်းနံပါတ်</label><input type="text" id="bk-phone" required
@@ -1546,6 +1625,17 @@
                             <button type="submit" class="btn btn-solid"
                                 style="width:100%;justify-content:center;margin-top:6px;">Request ပို့မည်</button>
                         </form>
+                        <div class="lookup-box">
+                            <label
+                                style="display:block;font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;">ကျွန်ုပ်၏
+                                Booking စစ်ဆေးရန်</label>
+                            <div class="field-row2" style="align-items:flex-end;">
+                                <div class="field" style="margin-bottom:0;"><input type="text" id="lookupPhone"
+                                        placeholder="ဖုန်းနံပါတ် ရိုက်ထည့်ပါ"></div>
+                                <button type="button" class="btn btn-outline" id="lookupBtn">စစ်ဆေးမည်</button>
+                            </div>
+                            <div id="lookupResult"></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1956,9 +2046,46 @@
                 toastTimer = setTimeout(function () { toastEl.classList.remove('show'); }, 3000);
             }
 
+            /* ---------- Token grid (view-only status; never reveals other people's info) ---------- */
+            var siteBookings = [];
+            try { siteBookings = JSON.parse(localStorage.getItem('clinic_site_bookings') || '[]'); } catch (err) { }
+            var siteTokenMax = 40;
+            try { siteTokenMax = +localStorage.getItem('clinic_site_token_max') || 40; } catch (err) { }
+            var selectedToken = null;
+
+            function renderSiteTokenGrid() {
+                var grid = document.getElementById('siteTokenGrid');
+                if (!grid) return;
+                grid.innerHTML = '';
+                var taken = 0;
+                for (var n = 1; n <= siteTokenMax; n++) {
+                    (function (n) {
+                        var isTaken = siteBookings.some(function (b) { return b.token === n; });
+                        if (isTaken) taken++;
+                        var cell = document.createElement('div');
+                        cell.className = 'token-cell' + (isTaken ? ' taken' : '') + (selectedToken === n ? ' selected' : '');
+                        cell.textContent = n;
+                        cell.addEventListener('click', function () {
+                            if (isTaken) { toast('Token ' + n + ' ရယူပြီးသားဖြစ်ပါသည် — အခြားနံပါတ်ရွေးပါ'); return; }
+                            selectedToken = n;
+                            document.getElementById('selectedTokenLabel').textContent = n;
+                            renderSiteTokenGrid();
+                        });
+                        grid.appendChild(cell);
+                    })(n);
+                }
+                if (siteTokenMax - taken <= 5) {
+                    siteTokenMax += 10;
+                    try { localStorage.setItem('clinic_site_token_max', siteTokenMax); } catch (err) { }
+                    renderSiteTokenGrid();
+                }
+            }
+            renderSiteTokenGrid();
+
             /* ---------- Booking form ---------- */
             document.getElementById('bookingForm').addEventListener('submit', function (e) {
                 e.preventDefault();
+                if (!selectedToken) { toast('Token နံပါတ် တစ်ခု ရွေးပေးပါ'); return; }
                 var name = document.getElementById('bk-name').value.trim();
                 var phone = document.getElementById('bk-phone').value.trim();
                 var date = document.getElementById('bk-date').value;
@@ -1966,22 +2093,47 @@
                 if (!name || !phone || !date) { toast('အချက်အလက် အပြည့်အစုံ ဖြည့်ပါ'); return; }
                 var ref = 'TK-' + Math.floor(100000 + Math.random() * 900000);
                 document.getElementById('confirmRef').textContent = ref;
-                document.getElementById('confirmDetail').textContent = name + ' — ' + date + ' ရက်အတွက် request လက်ခံပြီးပါပြီ။ ဆေးခန်းဝန်ထမ်းက ဖုန်းနံပါတ် ' + phone + ' ကို ဆက်သွယ်ပါမည်။';
+                document.getElementById('confirmDetail').textContent = 'Token ' + selectedToken + ' — ' + name + ' — ' + date + ' ရက်အတွက် request လက်ခံပြီးပါပြီ။ ဆေးခန်းဝန်ထမ်းက ဖုန်းနံပါတ် ' + phone + ' ကို ဆက်သွယ်ပါမည်။';
                 document.getElementById('confirmBox').classList.add('show');
                 try {
-                    var log = JSON.parse(localStorage.getItem('clinic_site_bookings') || '[]');
-                    log.push({ ref: ref, name: name, phone: phone, date: date, reason: reason, ts: Date.now() });
-                    localStorage.setItem('clinic_site_bookings', JSON.stringify(log));
+                    siteBookings.push({ token: selectedToken, ref: ref, name: name, phone: phone, date: date, reason: reason, ts: Date.now() });
+                    localStorage.setItem('clinic_site_bookings', JSON.stringify(siteBookings));
                 } catch (err) { }
                 toast('Booking request ပို့ပြီးပါပြီ — ' + ref);
+                selectedToken = null;
+                document.getElementById('selectedTokenLabel').textContent = 'မရွေးရသေးပါ';
+                renderSiteTokenGrid();
             });
             document.getElementById('bookAgainBtn').addEventListener('click', function () {
                 document.getElementById('confirmBox').classList.remove('show');
                 document.getElementById('bookingForm').reset();
+                selectedToken = null;
+                document.getElementById('selectedTokenLabel').textContent = 'မရွေးရသေးပါ';
+                renderSiteTokenGrid();
             });
             var dateInput = document.getElementById('bk-date');
             var todayISO = new Date().toISOString().split('T')[0];
             dateInput.setAttribute('min', todayISO);
+
+            /* ---------- Check my booking (only shows entries matching the phone number typed) ---------- */
+            document.getElementById('lookupBtn').addEventListener('click', function () {
+                var phone = document.getElementById('lookupPhone').value.trim();
+                var resultBox = document.getElementById('lookupResult');
+                if (!phone) { toast('ဖုန်းနံပါတ် ရိုက်ထည့်ပါ'); return; }
+                var mine = siteBookings.filter(function (b) { return b.phone === phone; }).sort(function (a, b) { return b.ts - a.ts; });
+                if (mine.length === 0) {
+                    resultBox.innerHTML = '<p style="font-size:13px;color:var(--muted);margin-top:14px;">ဒီဖုန်းနံပါတ်နဲ့ booking မတွေ့ပါ။</p>';
+                    return;
+                }
+                var b = mine[0];
+                resultBox.innerHTML =
+                    '<div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--stroke);">' +
+                    '<div class="lookup-result-row"><span>Token</span><span>' + b.token + '</span></div>' +
+                    '<div class="lookup-result-row"><span>အမည်</span><span>' + b.name + '</span></div>' +
+                    '<div class="lookup-result-row"><span>ရက်</span><span>' + b.date + '</span></div>' +
+                    '<div class="lookup-result-row"><span>Reference</span><span>' + b.ref + '</span></div>' +
+                    '</div>';
+            });
 
             /* ---------- FAQ accordion ---------- */
             document.querySelectorAll('.faq-item').forEach(function (item) {
